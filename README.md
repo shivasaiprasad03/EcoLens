@@ -3,7 +3,6 @@
 **Understand, track, and reduce your carbon footprint through simple actions and personalized insights.**
 
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](.)
-[![License](https://img.shields.io/badge/license-MIT-blue)](.)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](.)
 
 ---
