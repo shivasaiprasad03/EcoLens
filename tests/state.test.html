@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoLens — State Management Tests</title>
+</head>
+<body>
+  <div id="test-results"></div>
+
+  <!-- Dependencies -->
+  <script src="../js/utils.js"></script>
+  <script src="../js/state.js"></script>
+
+  <!-- Test Framework -->
+  <script src="test-runner.js"></script>
+
+  <script>
+    const { describe, it, assertEqual, assertDeepEqual, assertTrue, assertFalse, assertThrows, assertInRange, assertApproxEqual, run } = TestRunner;
+
+    // Clear any existing state before tests
+    localStorage.removeItem('ecolens_data');
+
+    // ============================================
+    //  STATE INITIALIZATION TESTS
+    // ============================================
+
+    describe('State Initialization', () => {
+      it('should have a valid schema version', () => {
+        assertTrue(Store.SCHEMA_VERSION >= 1);
+      });
+
+      it('should return default state when no saved data exists', () => {
+        const state = Store.get();
+        assertTrue(state !== null);
+        assertTrue(state !== undefined);
+        assertTrue('profile' in state);
+        assertTrue('activities' in state);
+        assertTrue('challenges' in state);
+        assertTrue('preferences' in state);
+      });
+
+      it('should have default profile with completed=false', () => {
+        const profile = Store.get('profile');
+        assertFalse(profile.completed);
+      });
+
+      it('should start with empty activities', () => {
+        const activities = Store.get('activities');
+        assertTrue(Array.isArray(activities));
+      });
+
+      it('should have default preferences', () => {
+        const prefs = Store.get('preferences');
+        assertEqual(prefs.theme, 'auto');
+        assertFalse(prefs.reducedMotion);
+        assertEqual(prefs.fontSize, 'normal');
+      });
+    });
+
+    // ============================================
+    //  GET / SET TESTS
+    // ============================================
+
+    describe('Get and Set', () => {
+      it('should get a deep clone (not reference)', () => {
+        const profile1 = Store.get('profile');
+        profile1.householdSize = 999;
+        const profile2 = Store.get('profile');
+        assertTrue(profile2.householdSize !== 999, 'Modifying returned value should not affect store');
+      });
+
+      it('should set a value correctly', () => {
+        const testPrefs = { theme: 'dark', reducedMotion: true, fontSize: 'large', unit: 'imperial' };
+        Store.set('preferences', testPrefs);
+        const result = Store.get('preferences');
+        assertEqual(result.theme, 'dark');
+        assertTrue(result.reducedMotion);
+        assertEqual(result.fontSize, 'large');
+      });
+
+      it('should update a partial object', () => {
+        Store.update('profile', { householdSize: 3 });
+        const profile = Store.get('profile');
+        assertEqual(profile.householdSize, 3);
+        // Other fields should still exist
+        assertTrue('diet' in profile);
+        assertTrue('commute' in profile);
+      });
+
+      it('should return undefined keys as undefined via deep clone', () => {
+        const result = Store.get('nonexistent');
+        assertEqual(result, undefined);
+      });
+    });
+
+    // ============================================
+    //  SUBSCRIPTION TESTS
+    // ============================================
+
+    describe('Subscriptions', () => {
+      it('should notify subscribers on set', () => {
+        let notified = false;
+        const unsub = Store.subscribe('preferences', () => { notified = true; });
+        Store.set('preferences', { theme: 'light', reducedMotion: false, fontSize: 'normal', unit: 'metric' });
+        assertTrue(notified, 'Subscriber should have been notified');
+        unsub();
+      });
+
+      it('should notify subscribers on update', () => {
+        let notifiedValue = null;
+        const unsub = Store.subscribe('profile', (val) => { notifiedValue = val; });
+        Store.update('profile', { diet: 'vegan' });
+        assertTrue(notifiedValue !== null, 'Subscriber should receive value');
+        assertEqual(notifiedValue.diet, 'vegan');
+        unsub();
+      });
+
+      it('should unsubscribe correctly', () => {
+        let count = 0;
+        const unsub = Store.subscribe('preferences', () => { count++; });
+        Store.update('preferences', { theme: 'dark' });
+        assertEqual(count, 1);
+        unsub();
+        Store.update('preferences', { theme: 'light' });
+        assertEqual(count, 1, 'Should not notify after unsubscribe');
+      });
+
+      it('should handle multiple subscribers', () => {
+        let count1 = 0, count2 = 0;
+        const unsub1 = Store.subscribe('profile', () => { count1++; });
+        const unsub2 = Store.subscribe('profile', () => { count2++; });
+        Store.update('profile', { householdSize: 5 });
+        assertEqual(count1, 1);
+        assertEqual(count2, 1);
+        unsub1();
+        unsub2();
+      });
+    });
+
+    // ============================================
+    //  ACTIVITY MANAGEMENT TESTS
+    // ============================================
+
+    describe('Activity Management', () => {
+      it('should add an activity', () => {
+        // Clear first
+        Store.set('activities', []);
+        const activity = Store.addActivity({
+          category: 'transport',
+          type: 'car-petrol',
+          value: 10,
+          unit: 'km',
+          co2: 1.92,
+        });
+        assertTrue(activity.id !== undefined, 'Should have an ID');
+        assertTrue(activity.date !== undefined, 'Should have a date');
+        assertTrue(activity.timestamp !== undefined, 'Should have a timestamp');
+        assertEqual(activity.category, 'transport');
+        assertEqual(activity.co2, 1.92);
+      });
+
+      it('should retrieve activities', () => {
+        const activities = Store.getActivities();
+        assertTrue(activities.length > 0);
+      });
+
+      it('should filter activities by category', () => {
+        Store.addActivity({ category: 'food', type: 'vegan', value: 1, unit: 'meals', co2: 0.7 });
+        const foodOnly = Store.getActivities({ category: 'food' });
+        foodOnly.forEach((a) => assertEqual(a.category, 'food'));
+      });
+
+      it('should delete an activity', () => {
+        const activities = Store.getActivities();
+        const idToDelete = activities[0].id;
+        const deleted = Store.deleteActivity(idToDelete);
+        assertTrue(deleted);
+        const remaining = Store.getActivities();
+        assertFalse(remaining.some((a) => a.id === idToDelete));
+      });
+
+      it('should return false when deleting non-existent activity', () => {
+        const result = Store.deleteActivity('non-existent-id');
+        assertFalse(result);
+      });
+
+      it('should calculate total CO2', () => {
+        Store.set('activities', []);
+        Store.addActivity({ category: 'transport', type: 'car', value: 10, unit: 'km', co2: 2 });
+        Store.addActivity({ category: 'food', type: 'vegan', value: 1, unit: 'meals', co2: 1 });
+
+        const today = Utils.today();
+        const total = Store.getTotalCO2(today, today);
+        assertApproxEqual(total, 3, 0.01);
+      });
+
+      it('should calculate grouped CO2', () => {
+        const today = Utils.today();
+        const grouped = Store.getTotalCO2(today, today, true);
+        assertTrue('transport' in grouped || 'food' in grouped);
+      });
+    });
+
+    // ============================================
+    //  STREAK TRACKING TESTS
+    // ============================================
+
+    describe('Streak Tracking', () => {
+      it('should update streak on first log', () => {
+        Store.set('activities', []);
+        Store.update('challenges', { streak: 0, lastLogDate: null });
+        Store.addActivity({ category: 'food', type: 'vegan', value: 1, unit: 'meals', co2: 0.7 });
+        const challenges = Store.get('challenges');
+        assertEqual(challenges.streak, 1);
+        assertEqual(challenges.lastLogDate, Utils.today());
+      });
+
+      it('should not double-count same-day logs', () => {
+        const streakBefore = Store.get('challenges').streak;
+        Store.addActivity({ category: 'food', type: 'mixed', value: 1, unit: 'meals', co2: 2.5 });
+        const streakAfter = Store.get('challenges').streak;
+        assertEqual(streakBefore, streakAfter, 'Same-day log should not increase streak');
+      });
+    });
+
+    // ============================================
+    //  EXPORT / IMPORT TESTS
+    // ============================================
+
+    describe('Export and Import', () => {
+      it('should export valid JSON', () => {
+        const exported = Store.exportData();
+        assertTrue(typeof exported === 'string');
+        const parsed = JSON.parse(exported);
+        assertTrue(typeof parsed === 'object');
+        assertTrue('_version' in parsed);
+      });
+
+      it('should import valid data', () => {
+        const exported = Store.exportData();
+        // Modify something
+        Store.update('profile', { householdSize: 99 });
+        // Import original back
+        const result = Store.importData(exported);
+        assertTrue(result.success);
+      });
+
+      it('should reject invalid JSON', () => {
+        const result = Store.importData('not valid json {{{');
+        assertFalse(result.success);
+        assertTrue(result.error !== undefined);
+      });
+
+      it('should reject non-object data', () => {
+        const result = Store.importData('"just a string"');
+        assertFalse(result.success);
+      });
+
+      it('should reject data without version', () => {
+        const result = Store.importData('{"profile": {}}');
+        assertFalse(result.success);
+      });
+    });
+
+    // ============================================
+    //  RESET TESTS
+    // ============================================
+
+    describe('Reset', () => {
+      it('should reset all state to defaults', () => {
+        Store.update('profile', { householdSize: 10, diet: 'vegan', completed: true });
+        Store.addActivity({ category: 'food', type: 'vegan', value: 1, unit: 'meals', co2: 0.7 });
+
+        Store.resetAll();
+
+        const profile = Store.get('profile');
+        assertFalse(profile.completed);
+        assertEqual(profile.householdSize, 1);
+        assertEqual(profile.diet, '');
+
+        const activities = Store.get('activities');
+        assertEqual(activities.length, 0);
+      });
+    });
+
+    // ============================================
+    //  UTILS TESTS
+    // ============================================
+
+    describe('Utils - Sanitization', () => {
+      it('should escape HTML special characters', () => {
+        var openTag = String.fromCharCode(60) + 'script' + String.fromCharCode(62);
+        var closeTag = String.fromCharCode(60) + '/script' + String.fromCharCode(62);
+        var input = openTag + 'alert("xss")' + closeTag;
+        var result = Utils.escapeHtml(input);
+        assertFalse(result.includes(openTag));
+        assertTrue(result.includes('&amp;lt;script&amp;gt;') || result.includes('&lt;script&gt;'));
+      });
+
+      it('should handle empty string', () => {
+        assertEqual(Utils.escapeHtml(''), '');
+      });
+
+      it('should handle non-string input', () => {
+        assertEqual(Utils.escapeHtml(null), '');
+        assertEqual(Utils.escapeHtml(undefined), '');
+        assertEqual(Utils.escapeHtml(123), '');
+      });
+
+      it('should sanitize mixed input', () => {
+        assertEqual(Utils.sanitize(42), '42');
+        assertEqual(Utils.sanitize(true), 'true');
+        assertEqual(Utils.sanitize(null), '');
+      });
+    });
+
+    describe('Utils - Validation', () => {
+      it('should validate valid numbers', () => {
+        const result = Utils.validateNumber(5, 0, 10);
+        assertTrue(result.valid);
+        assertEqual(result.value, 5);
+      });
+
+      it('should reject out-of-range numbers', () => {
+        const result = Utils.validateNumber(15, 0, 10);
+        assertFalse(result.valid);
+      });
+
+      it('should reject non-numbers', () => {
+        const result = Utils.validateNumber('abc', 0, 10);
+        assertFalse(result.valid);
+      });
+
+      it('should validate required fields', () => {
+        assertTrue(Utils.validateRequired('hello').valid);
+        assertFalse(Utils.validateRequired('').valid);
+        assertFalse(Utils.validateRequired('   ').valid);
+      });
+    });
+
+    describe('Utils - Date Helpers', () => {
+      it('should return today as YYYY-MM-DD', () => {
+        const today = Utils.today();
+        assertTrue(/^\d{4}-\d{2}-\d{2}$/.test(today));
+      });
+
+      it('should return past dates', () => {
+        const yesterday = Utils.daysAgo(1);
+        assertTrue(yesterday < Utils.today());
+      });
+
+      it('should format dates', () => {
+        const result = Utils.formatDate(Utils.today(), 'relative');
+        assertEqual(result, 'Today');
+      });
+    });
+
+    describe('Utils - Formatting', () => {
+      it('should format CO2 with unit', () => {
+        const result = Utils.formatCO2(5.5);
+        assertTrue(result.includes('5.5'));
+        assertTrue(result.includes('kg'));
+      });
+
+      it('should format large CO2 in tonnes', () => {
+        const result = Utils.formatCO2(1500, true);
+        assertTrue(result.includes('t'));
+      });
+
+      it('should format percentages', () => {
+        assertEqual(Utils.percentage(50, 100), '50%');
+        assertEqual(Utils.percentage(0, 0), '0%');
+      });
+    });
+
+    describe('Utils - ID Generation', () => {
+      it('should generate unique IDs', () => {
+        const id1 = Utils.generateId();
+        const id2 = Utils.generateId();
+        assertTrue(id1 !== id2);
+      });
+
+      it('should support prefixes', () => {
+        const id = Utils.generateId('test');
+        assertTrue(id.startsWith('test_'));
+      });
+    });
+
+    // Run all tests
+    run();
+  </script>
+</body>
+</html>

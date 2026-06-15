@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoLens — Emissions Engine Tests</title>
+</head>
+<body>
+  <div id="test-results"></div>
+
+  <!-- Dependencies -->
+  <script src="../js/utils.js"></script>
+  <script src="../js/state.js"></script>
+  <script src="../js/emissions.js"></script>
+
+  <!-- Test Framework -->
+  <script src="test-runner.js"></script>
+
+  <script>
+    const { describe, it, assertEqual, assertDeepEqual, assertTrue, assertFalse, assertThrows, assertInRange, assertApproxEqual, run } = TestRunner;
+
+    // ============================================
+    //  TRANSPORT EMISSION TESTS
+    // ============================================
+
+    describe('Transport Emissions', () => {
+      it('should calculate petrol car emissions correctly', () => {
+        const result = Emissions.calcTransport('car-petrol', 10);
+        assertApproxEqual(result, 1.92, 0.01);
+      });
+
+      it('should calculate electric car emissions correctly', () => {
+        const result = Emissions.calcTransport('car-electric', 10);
+        assertApproxEqual(result, 0.53, 0.01);
+      });
+
+      it('should return 0 for bike/walk', () => {
+        assertEqual(Emissions.calcTransport('bike', 100), 0);
+        assertEqual(Emissions.calcTransport('walk', 50), 0);
+      });
+
+      it('should return 0 for zero distance', () => {
+        assertEqual(Emissions.calcTransport('car-petrol', 0), 0);
+      });
+
+      it('should return 0 for unknown transport type', () => {
+        assertEqual(Emissions.calcTransport('hovercraft', 100), 0);
+      });
+
+      it('should never return negative values', () => {
+        assertTrue(Emissions.calcTransport('car-petrol', -10) >= 0);
+      });
+
+      it('should handle very large distances', () => {
+        const result = Emissions.calcTransport('car-petrol', 100000);
+        assertTrue(result > 0);
+        assertApproxEqual(result, 19200, 10);
+      });
+
+      it('should scale linearly with distance', () => {
+        const d1 = Emissions.calcTransport('bus', 10);
+        const d2 = Emissions.calcTransport('bus', 20);
+        assertApproxEqual(d2, d1 * 2, 0.01);
+      });
+    });
+
+    // ============================================
+    //  FLIGHT EMISSION TESTS
+    // ============================================
+
+    describe('Flight Emissions', () => {
+      it('should calculate short-haul flights correctly', () => {
+        const result = Emissions.calcFlight('short-haul', 1000);
+        assertApproxEqual(result, 255, 1);
+      });
+
+      it('should calculate long-haul flights correctly', () => {
+        const result = Emissions.calcFlight('long-haul', 5000);
+        assertApproxEqual(result, 750, 1);
+      });
+
+      it('should return 0 for unknown flight type', () => {
+        assertEqual(Emissions.calcFlight('supersonic', 1000), 0);
+      });
+
+      it('short-haul should have higher per-km emissions than long-haul', () => {
+        assertTrue(Emissions.FLIGHTS['short-haul'] > Emissions.FLIGHTS['long-haul']);
+      });
+    });
+
+    // ============================================
+    //  FOOD EMISSION TESTS
+    // ============================================
+
+    describe('Food Emissions', () => {
+      it('should calculate vegan meal emissions', () => {
+        assertApproxEqual(Emissions.calcFood('vegan', 1), 0.7, 0.01);
+      });
+
+      it('should calculate high-meat meal emissions', () => {
+        assertApproxEqual(Emissions.calcFood('high-meat', 1), 3.8, 0.01);
+      });
+
+      it('should handle multiple meals', () => {
+        const result = Emissions.calcFood('mixed', 3);
+        assertApproxEqual(result, 7.5, 0.01);
+      });
+
+      it('vegan should have lowest emissions', () => {
+        assertTrue(Emissions.FOOD['vegan'] < Emissions.FOOD['vegetarian']);
+        assertTrue(Emissions.FOOD['vegan'] < Emissions.FOOD['mixed']);
+        assertTrue(Emissions.FOOD['vegan'] < Emissions.FOOD['high-meat']);
+      });
+
+      it('high-meat should have highest emissions', () => {
+        assertTrue(Emissions.FOOD['high-meat'] > Emissions.FOOD['mixed']);
+        assertTrue(Emissions.FOOD['high-meat'] > Emissions.FOOD['vegetarian']);
+      });
+    });
+
+    // ============================================
+    //  ENERGY EMISSION TESTS
+    // ============================================
+
+    describe('Energy Emissions', () => {
+      it('should calculate grid emissions', () => {
+        const result = Emissions.calcEnergy('grid', 10);
+        assertApproxEqual(result, 4.75, 0.01);
+      });
+
+      it('should calculate solar emissions (much lower)', () => {
+        const grid = Emissions.calcEnergy('grid', 10);
+        const solar = Emissions.calcEnergy('solar', 10);
+        assertTrue(solar < grid * 0.2, 'Solar should be less than 20% of grid');
+      });
+
+      it('should use grid as default for unknown sources', () => {
+        const result = Emissions.calcEnergy('unknown-source', 10);
+        const gridResult = Emissions.calcEnergy('grid', 10);
+        assertApproxEqual(result, gridResult, 0.01);
+      });
+
+      it('renewables should have lower emissions than grid', () => {
+        assertTrue(Emissions.ENERGY['solar'] < Emissions.ENERGY['grid']);
+        assertTrue(Emissions.ENERGY['wind'] < Emissions.ENERGY['grid']);
+        assertTrue(Emissions.ENERGY['mixed-renewable'] < Emissions.ENERGY['grid']);
+      });
+    });
+
+    // ============================================
+    //  SHOPPING EMISSION TESTS
+    // ============================================
+
+    describe('Shopping Emissions', () => {
+      it('should calculate clothing emissions', () => {
+        assertEqual(Emissions.calcShopping('clothing', 1), 15);
+      });
+
+      it('should calculate electronics emissions', () => {
+        assertEqual(Emissions.calcShopping('electronics', 2), 100);
+      });
+
+      it('should use general as fallback for unknown types', () => {
+        const result = Emissions.calcShopping('unknown', 1);
+        assertEqual(result, Emissions.SHOPPING['general']);
+      });
+    });
+
+    // ============================================
+    //  WASTE EMISSION TESTS
+    // ============================================
+
+    describe('Waste Emissions', () => {
+      it('should calculate landfill emissions (positive)', () => {
+        const result = Emissions.calcWaste('landfill', 1);
+        assertTrue(result > 0);
+      });
+
+      it('should calculate recycling savings (negative)', () => {
+        const result = Emissions.calcWaste('recycled', 1);
+        assertTrue(result < 0, 'Recycling should have negative (avoided) emissions');
+      });
+
+      it('should calculate composting savings (negative)', () => {
+        const result = Emissions.calcWaste('composted', 1);
+        assertTrue(result < 0);
+      });
+    });
+
+    // ============================================
+    //  MASTER CALCULATE FUNCTION TESTS
+    // ============================================
+
+    describe('Master Calculate Function', () => {
+      it('should dispatch to transport calculator', () => {
+        const direct = Emissions.calcTransport('bus', 10);
+        const master = Emissions.calculate('transport', 'bus', 10);
+        assertEqual(direct, master);
+      });
+
+      it('should dispatch to food calculator', () => {
+        const direct = Emissions.calcFood('vegan', 2);
+        const master = Emissions.calculate('food', 'vegan', 2);
+        assertEqual(direct, master);
+      });
+
+      it('should return 0 for unknown categories', () => {
+        assertEqual(Emissions.calculate('teleportation', 'quantum', 100), 0);
+      });
+    });
+
+    // ============================================
+    //  BASELINE ESTIMATION TESTS
+    // ============================================
+
+    describe('Baseline Estimation', () => {
+      it('should return a positive total for a typical profile', () => {
+        const profile = {
+          householdSize: 2,
+          country: 'us',
+          diet: 'mixed',
+          commute: 'car-petrol',
+          commuteDistance: 15,
+          energySource: 'grid',
+          homeSize: 'medium',
+        };
+        const baseline = Emissions.estimateBaseline(profile);
+        assertTrue(baseline.total > 0);
+        assertTrue(baseline.transport > 0);
+        assertTrue(baseline.food > 0);
+        assertTrue(baseline.energy > 0);
+      });
+
+      it('should have lower emissions for vegan + bike profile', () => {
+        const ecoProfile = {
+          householdSize: 1,
+          diet: 'vegan',
+          commute: 'bike',
+          commuteDistance: 5,
+          energySource: 'solar',
+          homeSize: 'small',
+        };
+        const highProfile = {
+          householdSize: 1,
+          diet: 'high-meat',
+          commute: 'car-petrol',
+          commuteDistance: 30,
+          energySource: 'grid',
+          homeSize: 'large',
+        };
+        const eco = Emissions.estimateBaseline(ecoProfile);
+        const high = Emissions.estimateBaseline(highProfile);
+        assertTrue(eco.total < high.total, 'Eco profile should have lower emissions');
+      });
+
+      it('should return all categories', () => {
+        const baseline = Emissions.estimateBaseline({ diet: 'mixed', commute: 'bus', commuteDistance: 10, energySource: 'grid', homeSize: 'medium', householdSize: 1 });
+        assertTrue('transport' in baseline);
+        assertTrue('food' in baseline);
+        assertTrue('energy' in baseline);
+        assertTrue('shopping' in baseline);
+        assertTrue('waste' in baseline);
+        assertTrue('total' in baseline);
+      });
+    });
+
+    // ============================================
+    //  EMISSION FACTOR VALIDITY TESTS
+    // ============================================
+
+    describe('Emission Factor Validity', () => {
+      it('all transport factors should be non-negative', () => {
+        Object.values(Emissions.TRANSPORT).forEach((factor) => {
+          assertTrue(factor >= 0, `Transport factor ${factor} should be >= 0`);
+        });
+      });
+
+      it('all food factors should be positive', () => {
+        Object.values(Emissions.FOOD).forEach((factor) => {
+          assertTrue(factor > 0, `Food factor ${factor} should be > 0`);
+        });
+      });
+
+      it('all energy factors should be positive', () => {
+        Object.values(Emissions.ENERGY).forEach((factor) => {
+          assertTrue(factor > 0, `Energy factor ${factor} should be > 0`);
+        });
+      });
+
+      it('transport factors should be in realistic range (0-0.5 kg/km)', () => {
+        Object.entries(Emissions.TRANSPORT).forEach(([key, factor]) => {
+          assertInRange(factor, 0, 0.5, `Transport factor for ${key} out of range: ${factor}`);
+        });
+      });
+
+      it('food factors should be in realistic range (0-10 kg/meal)', () => {
+        Object.entries(Emissions.FOOD).forEach(([key, factor]) => {
+          assertInRange(factor, 0, 10, `Food factor for ${key} out of range: ${factor}`);
+        });
+      });
+
+      it('national averages should be positive', () => {
+        Object.values(Emissions.NATIONAL_AVERAGES).forEach((avg) => {
+          assertTrue(avg > 0);
+        });
+      });
+
+      it('Paris target should be 2 tonnes', () => {
+        assertEqual(Emissions.PARIS_TARGET, 2.0);
+      });
+    });
+
+    // ============================================
+    //  HELPER FUNCTION TESTS
+    // ============================================
+
+    describe('Helper Functions', () => {
+      it('should get national average for known country', () => {
+        assertEqual(Emissions.getNationalAverage('us'), 14.9);
+      });
+
+      it('should fallback to global average for unknown country', () => {
+        assertEqual(Emissions.getNationalAverage('narnia'), Emissions.NATIONAL_AVERAGES['global']);
+      });
+
+      it('should return transport types array', () => {
+        const types = Emissions.getTransportTypes();
+        assertTrue(Array.isArray(types));
+        assertTrue(types.length > 0);
+        assertTrue(types[0].key !== undefined);
+        assertTrue(types[0].label !== undefined);
+      });
+
+      it('should return food types array', () => {
+        const types = Emissions.getFoodTypes();
+        assertTrue(Array.isArray(types));
+        assertTrue(types.length >= 4);
+      });
+
+      it('should return category metadata', () => {
+        const meta = Emissions.getCategoryMeta('transport');
+        assertEqual(meta.label, 'Transport');
+        assertTrue(meta.icon !== undefined);
+        assertTrue(meta.color !== undefined);
+      });
+    });
+
+    // Run all tests
+    run();
+  </script>
+</body>
+</html>

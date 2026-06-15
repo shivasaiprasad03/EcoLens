@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="EcoLens — Understand, track, and reduce your carbon footprint through simple actions and personalized insights. Free, private, and works offline.">
+  <meta name="keywords" content="carbon footprint, CO2 tracker, sustainability, climate action, eco-friendly, emissions calculator">
+  <meta name="author" content="EcoLens">
+  <meta name="theme-color" content="#2d9a6b">
+
+  <!-- Security: Content Security Policy -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:;">
+
+  <title>EcoLens — Personal Carbon Footprint Tracker</title>
+
+  <!-- Preconnect for Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="css/index.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/views.css">
+
+  <!-- Favicon (inline SVG data URI) -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌿</text></svg>">
+</head>
+<body>
+  <!-- Skip to main content link (accessibility) -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- App root -->
+  <div id="app"></div>
+
+  <!-- ARIA live region for screen reader announcements -->
+  <div id="aria-live-region" class="aria-live" aria-live="polite" aria-atomic="true" role="status"></div>
+
+  <!-- Core JS modules (order matters: dependencies first) -->
+  <script src="js/utils.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/router.js"></script>
+  <script src="js/emissions.js"></script>
+  <script src="js/insights.js"></script>
+  <script src="js/charts.js"></script>
+
+  <!-- Components -->
+  <script src="js/components/navbar.js"></script>
+  <script src="js/components/toast.js"></script>
+  <script src="js/components/modal.js"></script>
+
+  <!-- Views -->
+  <script src="js/views/onboarding.js"></script>
+  <script src="js/views/dashboard.js"></script>
+  <script src="js/views/logger.js"></script>
+  <script src="js/views/insights.js"></script>
+  <script src="js/views/challenges.js"></script>
+  <script src="js/views/settings.js"></script>
+
+  <!-- App initialization (must be last) -->
+  <script src="js/app.js"></script>
+</body>
+</html>
