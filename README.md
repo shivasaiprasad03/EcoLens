@@ -2,6 +2,8 @@
 
 **Understand, track, and reduce your carbon footprint through simple actions and personalized insights.**
 
+LIVE SITE - https://ecolens-20260615.web.app/
+
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](.)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](.)
 
