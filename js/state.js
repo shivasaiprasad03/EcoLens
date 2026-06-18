@@ -1,7 +1,39 @@
 /**
  * EcoLens — State Management
  * Centralized state store with localStorage persistence and pub/sub.
+ *
+ * Architecture:
+ *  - Single source of truth: all app state lives in one object.
+ *  - Persistence: state is debounce-persisted to localStorage on every change.
+ *  - Reactivity: components subscribe to specific keys and get notified on change.
+ *  - Immutability: all reads return deep clones to prevent accidental mutation.
+ *
  * @module state
+ */
+
+/**
+ * @typedef {Object} Activity
+ * @property {string} id        - Unique identifier (generated).
+ * @property {string} date      - ISO date string (YYYY-MM-DD).
+ * @property {number} timestamp - Unix timestamp of creation.
+ * @property {string} category  - Emission category ('transport', 'food', etc.).
+ * @property {string} type      - Specific type within category.
+ * @property {number} value     - Quantity value (km, meals, kWh, etc.).
+ * @property {string} unit      - Unit label ('km', 'meals', 'kWh', 'items', 'kg').
+ * @property {number} co2       - Calculated CO₂e in kg.
+ * @property {string} [note]    - Optional user note.
+ */
+
+/**
+ * @typedef {Object} UserProfile
+ * @property {boolean} completed      - Whether onboarding is finished.
+ * @property {number}  householdSize  - Number of people in household.
+ * @property {string}  country        - Country code for national comparison.
+ * @property {string}  diet           - Diet type key.
+ * @property {string}  commute        - Commute transport type key.
+ * @property {number}  commuteDistance - One-way commute distance in km.
+ * @property {string}  energySource   - Home energy source key.
+ * @property {string}  homeSize       - 'small' | 'medium' | 'large'.
  */
 
 const Store = (() => {

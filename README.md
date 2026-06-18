@@ -47,18 +47,20 @@ EcoLens is built as a **zero-dependency, pure vanilla JavaScript** single-page a
 ### Core Modules
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    index.html                        │
-│                   (App Shell)                        │
-├──────────┬──────────┬───────────┬──────────┬────────┤
-│  utils   │  state   │  router   │emissions │insights│
-│  .js     │  .js     │  .js      │  .js     │  .js   │
-├──────────┴──────────┴───────────┴──────────┴────────┤
-│              Components (navbar, toast, modal)        │
-├──────────┬──────────┬───────────┬──────────┬────────┤
-│onboarding│dashboard │  logger   │ insights │settings│
-│          │          │           │ view     │        │
-└──────────┴──────────┴───────────┴──────────┴────────┘
+┌─────────────────────────────────────────────────────────┐
+│                    index.html                            │
+│                   (App Shell)                            │
+├──────────┬──────────┬───────────┬──────────┬────────────┤
+│constants │  utils   │  state   │  router   │  emissions │
+│  .js     │  .js     │  .js     │  .js      │  .js       │
+├──────────┴──────────┴───────────┴──────────┴────────────┤
+│           insights.js  │  charts.js                      │
+├──────────────────────────────────────────────────────────┤
+│              Components (navbar, toast, modal)            │
+├──────────┬──────────┬───────────┬──────────┬────────────┤
+│onboarding│dashboard │  logger   │ insights │  settings  │
+│          │          │           │ view     │            │
+└──────────┴──────────┴───────────┴──────────┴────────────┘
 ```
 
 ### Emissions Engine
@@ -174,6 +176,7 @@ EcoLens/
 │   ├── components.css         # Reusable component styles (buttons, cards, forms, modals)
 │   └── views.css              # View-specific layouts (dashboard grid, onboarding wizard)
 ├── js/
+│   ├── constants.js           # Centralized constants (no magic numbers)
 │   ├── app.js                 # App initialization and route registration
 │   ├── router.js              # Hash-based SPA router with view lifecycle
 │   ├── state.js               # Centralized state with localStorage persistence & pub/sub
@@ -193,9 +196,11 @@ EcoLens/
 │       ├── challenges.js      # Challenges, streaks, heatmap, badges
 │       └── settings.js        # Preferences, data export/import, reset
 ├── tests/
-│   ├── test-runner.js         # Lightweight browser-based test framework
-│   ├── emissions.test.html    # 40+ tests for emissions calculations
-│   └── state.test.html        # 30+ tests for state management & utilities
+│   ├── test-runner.js         # Lightweight browser-based test framework (8 assertion types)
+│   ├── emissions.test.html    # 45 tests: all emission categories, edge cases, factor validity
+│   ├── state.test.html        # 44 tests: CRUD, subscriptions, import/export, sanitization
+│   ├── insights.test.html     # 36 tests: tip generation, scoring, challenges, achievements
+│   └── integration.test.html  # 26 tests: cross-module pipelines, edge cases, immutability
 └── README.md                  # This file
 ```
 
@@ -207,25 +212,34 @@ EcoLens/
 
 Open the test files directly in your browser — no build tools or Node.js required:
 
-1. **Emissions Tests**: Open `tests/emissions.test.html` in any modern browser
-2. **State Management Tests**: Open `tests/state.test.html` in any modern browser
+1. **Emissions Tests**: Open `tests/emissions.test.html` — 45 tests covering all emission calculators
+2. **State Management Tests**: Open `tests/state.test.html` — 44 tests for state CRUD, persistence, subscriptions
+3. **Insights Engine Tests**: Open `tests/insights.test.html` — 36 tests for tip generation, scoring, achievements
+4. **Integration Tests**: Open `tests/integration.test.html` — 26 tests for cross-module pipelines
 
-Both test suites include:
-- **Unit tests** for all calculation functions
-- **Edge case testing** (zero, negative, very large values)
-- **Validation tests** for emission factor ranges
-- **Integration tests** for state persistence and subscriptions
-- **Security tests** for input sanitization
+Or use a local server:
+```bash
+npx http-server . -p 8080
+# Then open http://localhost:8080/tests/emissions.test.html (etc.)
+```
+
+All test suites include:
+- **Unit tests** for all calculation functions and public APIs
+- **Edge case testing** (NaN, null, undefined, negative, very large values)
+- **Input guard validation** (type checking at function boundaries)
+- **Integration tests** for cross-module data flow (Store → Emissions → Insights)
+- **Immutability tests** (Object.freeze verification on all shared data)
+- **Security tests** for XSS prevention and sanitization
 
 ### Test Coverage
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
-| Emissions Engine | 40+ | All categories, edge cases, factor validity |
-| State Management | 30+ | CRUD, subscriptions, import/export, reset |
-| Utils (Sanitization) | 8+ | XSS prevention, type handling |
-| Utils (Validation) | 6+ | Number ranges, required fields |
-| Utils (Formatting) | 6+ | CO₂ formatting, dates, percentages |
+| Emissions Engine | 45 | All 6 categories, master dispatch, baseline, factor validity |
+| State Management | 44 | CRUD, subscriptions, import/export, reset, sanitization |
+| Insights Engine | 36 | Tip filtering, scoring, ranking, dismissal, challenges, badges |
+| Integration | 26 | Cross-module pipelines, error handling, data integrity |
+| **Total** | **151** | **All public APIs covered** |
 
 ---
 

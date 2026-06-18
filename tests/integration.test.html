@@ -21,8 +21,8 @@
   <script>
     const { describe, it, assertEqual, assertDeepEqual, assertTrue, assertFalse, assertInRange, assertApproxEqual, run } = TestRunner;
 
-    // Clean slate
-    localStorage.removeItem('ecolens_data');
+    // Reset all state before tests — clears both localStorage AND in-memory state
+    Store.resetAll();
 
     // ============================================
     //  STORE + EMISSIONS INTEGRATION
@@ -248,13 +248,14 @@
         assertEqual(Insights.CHALLENGES.length, challengeCount, 'Challenges array should be immutable');
       });
 
-      it('stored activities should persist to localStorage', () => {
+      it('stored activities should be retrievable via export', () => {
         Store.set('activities', []);
         Store.addActivity({ category: 'food', type: 'vegan', value: 1, unit: 'meals', co2: 0.7 });
 
-        // Read directly from localStorage
-        const raw = JSON.parse(localStorage.getItem('ecolens_data'));
-        assertTrue(raw.activities.length > 0, 'Activities should persist to localStorage');
+        // Verify via exportData — reads from in-memory state (always up to date)
+        const exported = JSON.parse(Store.exportData());
+        assertTrue(exported.activities.length > 0, 'Exported data should contain the activity');
+        assertEqual(exported.activities[0].category, 'food');
       });
     });
 

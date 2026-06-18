@@ -58,16 +58,16 @@ const Constants = (() => {
 
   // ---- Validation Limits ----
 
-  /** @type {Object} Input validation boundaries */
+  /** @type {Object} Input validation boundaries (deeply frozen) */
   const LIMITS = Object.freeze({
-    HOUSEHOLD_SIZE: { min: 1, max: 20 },
-    COMMUTE_DISTANCE: { min: 0, max: 500 },
-    ENERGY_KWH: { min: 0, max: 10000 },
-    SHOPPING_QUANTITY: { min: 1, max: 1000 },
-    WASTE_KG: { min: 0, max: 5000 },
-    FOOD_MEALS: { min: 1, max: 100 },
-    FLIGHT_DISTANCE: { min: 0, max: 20000 },
-    TRANSPORT_DISTANCE: { min: 0, max: 1000 },
+    HOUSEHOLD_SIZE: Object.freeze({ min: 1, max: 20 }),
+    COMMUTE_DISTANCE: Object.freeze({ min: 0, max: 500 }),
+    ENERGY_KWH: Object.freeze({ min: 0, max: 10000 }),
+    SHOPPING_QUANTITY: Object.freeze({ min: 1, max: 1000 }),
+    WASTE_KG: Object.freeze({ min: 0, max: 5000 }),
+    FOOD_MEALS: Object.freeze({ min: 1, max: 100 }),
+    FLIGHT_DISTANCE: Object.freeze({ min: 0, max: 20000 }),
+    TRANSPORT_DISTANCE: Object.freeze({ min: 0, max: 1000 }),
   });
 
   // ---- Baseline Estimation Defaults ----

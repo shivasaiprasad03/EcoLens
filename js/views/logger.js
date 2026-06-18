@@ -10,7 +10,8 @@ const LoggerView = (() => {
   let activeCategory = 'transport';
   let unsubActivities = null;
 
-  const CATEGORIES = ['transport', 'food', 'energy', 'shopping', 'waste'];
+  /** Logger-relevant categories (excludes 'flight' which uses transport form) */
+  const LOGGER_CATEGORIES = Constants.CATEGORIES.filter((c) => c !== 'flight');
 
   /**
    * Mounts the logger view.
@@ -38,7 +39,7 @@ const LoggerView = (() => {
             <!-- Log Form -->
             <div>
               <div class="tabs" role="tablist" aria-label="Activity categories" id="category-tabs">
-                ${CATEGORIES.map((cat) => {
+                ${LOGGER_CATEGORIES.map((cat) => {
                   const meta = Emissions.getCategoryMeta(cat);
                   return `<button class="tab ${cat === activeCategory ? 'active' : ''}" 
                             role="tab" 

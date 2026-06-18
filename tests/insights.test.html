@@ -21,8 +21,8 @@
   <script>
     const { describe, it, assertEqual, assertDeepEqual, assertTrue, assertFalse, assertThrows, assertInRange, assertApproxEqual, run } = TestRunner;
 
-    // Clear any existing state before tests
-    localStorage.removeItem('ecolens_data');
+    // Reset all state before tests — clears both localStorage AND in-memory state
+    Store.resetAll();
 
     // ============================================
     //  TIP GENERATION TESTS
