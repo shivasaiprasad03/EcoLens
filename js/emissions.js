@@ -5,6 +5,16 @@
  * @module emissions
  */
 
+/**
+ * @typedef {Object} BaselineEstimate
+ * @property {number} total   - Total annual CO₂e in kg.
+ * @property {number} transport - Annual transport emissions in kg.
+ * @property {number} food     - Annual food emissions in kg.
+ * @property {number} energy   - Annual energy emissions in kg.
+ * @property {number} shopping - Annual shopping emissions in kg.
+ * @property {number} waste    - Annual waste emissions in kg.
+ */
+
 const Emissions = (() => {
   'use strict';
 
@@ -139,12 +149,13 @@ const Emissions = (() => {
    * @returns {number} kg CO₂e
    */
   function calcTransport(type, distanceKm) {
+    if (typeof distanceKm !== 'number' || isNaN(distanceKm) || distanceKm < 0) return 0;
     const factor = TRANSPORT[type];
     if (factor === undefined) {
       console.warn(`[Emissions] Unknown transport type: ${type}`);
       return 0;
     }
-    return Math.max(0, factor * distanceKm);
+    return factor * distanceKm;
   }
 
   /**
@@ -154,12 +165,13 @@ const Emissions = (() => {
    * @returns {number} kg CO₂e
    */
   function calcFlight(haulType, distanceKm) {
+    if (typeof distanceKm !== 'number' || isNaN(distanceKm) || distanceKm < 0) return 0;
     const factor = FLIGHTS[haulType];
     if (factor === undefined) {
       console.warn(`[Emissions] Unknown flight type: ${haulType}`);
       return 0;
     }
-    return Math.max(0, factor * distanceKm);
+    return factor * distanceKm;
   }
 
   /**
@@ -169,12 +181,13 @@ const Emissions = (() => {
    * @returns {number} kg CO₂e
    */
   function calcFood(dietType, meals) {
+    if (typeof meals !== 'number' || isNaN(meals) || meals < 0) return 0;
     const factor = FOOD[dietType];
     if (factor === undefined) {
       console.warn(`[Emissions] Unknown diet type: ${dietType}`);
       return 0;
     }
-    return Math.max(0, factor * meals);
+    return factor * meals;
   }
 
   /**
@@ -184,12 +197,13 @@ const Emissions = (() => {
    * @returns {number} kg CO₂e
    */
   function calcEnergy(source, kWh) {
+    if (typeof kWh !== 'number' || isNaN(kWh) || kWh < 0) return 0;
     const factor = ENERGY[source];
     if (factor === undefined) {
       console.warn(`[Emissions] Unknown energy source: ${source}`);
       return ENERGY['grid'] * kWh;
     }
-    return Math.max(0, factor * kWh);
+    return factor * kWh;
   }
 
   /**
@@ -199,12 +213,13 @@ const Emissions = (() => {
    * @returns {number} kg CO₂e
    */
   function calcShopping(itemType, quantity) {
+    if (typeof quantity !== 'number' || isNaN(quantity) || quantity < 0) return 0;
     const factor = SHOPPING[itemType];
     if (factor === undefined) {
       console.warn(`[Emissions] Unknown shopping type: ${itemType}`);
       return SHOPPING['general'] * quantity;
     }
-    return Math.max(0, factor * quantity);
+    return factor * quantity;
   }
 
   /**
@@ -214,6 +229,7 @@ const Emissions = (() => {
    * @returns {number} kg CO₂e (can be negative for recycling)
    */
   function calcWaste(disposalType, weightKg) {
+    if (typeof weightKg !== 'number' || isNaN(weightKg) || weightKg < 0) return 0;
     const factor = WASTE[disposalType];
     if (factor === undefined) {
       console.warn(`[Emissions] Unknown waste type: ${disposalType}`);
@@ -249,35 +265,36 @@ const Emissions = (() => {
 
   /**
    * Estimates annual baseline CO₂ from user profile.
+   * Uses Constants for all configuration values to avoid magic numbers.
    * @param {Object} profile - User profile from state.
-   * @returns {Object} { total, transport, food, energy, shopping, waste }
+   * @returns {BaselineEstimate} Breakdown of annual emissions by category.
    */
   function estimateBaseline(profile) {
-    const daysPerYear = 365;
-    const workDays = 250; // approximate work days
+    if (!profile || typeof profile !== 'object') {
+      return { total: 0, transport: 0, food: 0, energy: 0, shopping: 0, waste: 0 };
+    }
 
-    // Transport: daily commute
+    // Transport: daily commute × work days/year
     let transportAnnual = 0;
     if (profile.commute && profile.commuteDistance > 0) {
       const dailyRoundTrip = profile.commuteDistance * 2;
-      transportAnnual = calcTransport(profile.commute, dailyRoundTrip) * workDays;
+      transportAnnual = calcTransport(profile.commute, dailyRoundTrip) * Constants.WORK_DAYS_PER_YEAR;
     }
 
-    // Food: 3 meals/day based on diet
+    // Food: meals/day × days/year based on diet
     const diet = profile.diet || 'mixed';
-    const foodAnnual = calcFood(diet, 3) * daysPerYear;
+    const foodAnnual = calcFood(diet, Constants.MEALS_PER_DAY) * Constants.DAYS_PER_YEAR;
 
-    // Energy: daily home energy based on size and source
+    // Energy: daily home energy based on size, source, and household sharing
     const homeSize = profile.homeSize || 'medium';
     const energySource = profile.energySource || 'grid';
-    const dailyKwh = (HOME_ENERGY_DAILY[homeSize] || 15) * (profile.householdSize ? 1 / Math.sqrt(profile.householdSize) : 1);
-    const energyAnnual = calcEnergy(energySource, dailyKwh) * daysPerYear;
+    const householdFactor = profile.householdSize > 0 ? 1 / Math.sqrt(profile.householdSize) : 1;
+    const dailyKwh = (HOME_ENERGY_DAILY[homeSize] || HOME_ENERGY_DAILY['medium']) * householdFactor;
+    const energyAnnual = calcEnergy(energySource, dailyKwh) * Constants.DAYS_PER_YEAR;
 
-    // Shopping: estimated average per person
-    const shoppingAnnual = 500; // kg CO₂e/year average
-
-    // Waste: estimated
-    const wasteAnnual = 200; // kg CO₂e/year average
+    // Shopping & Waste: population-average estimates
+    const shoppingAnnual = Constants.DEFAULT_SHOPPING_ANNUAL_KG;
+    const wasteAnnual = Constants.DEFAULT_WASTE_ANNUAL_KG;
 
     const total = transportAnnual + foodAnnual + energyAnnual + shoppingAnnual + wasteAnnual;
 

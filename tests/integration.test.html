@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoLens — Integration Tests</title>
+</head>
+<body>
+  <div id="test-results"></div>
+
+  <!-- Dependencies (full stack, in correct load order) -->
+  <script src="../js/constants.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/state.js"></script>
+  <script src="../js/emissions.js"></script>
+  <script src="../js/insights.js"></script>
+
+  <!-- Test Framework -->
+  <script src="test-runner.js"></script>
+
+  <script>
+    const { describe, it, assertEqual, assertDeepEqual, assertTrue, assertFalse, assertInRange, assertApproxEqual, run } = TestRunner;
+
+    // Clean slate
+    localStorage.removeItem('ecolens_data');
+
+    // ============================================
+    //  STORE + EMISSIONS INTEGRATION
+    // ============================================
+
+    describe('Store + Emissions Integration', () => {
+      it('should log an activity and update CO2 totals', () => {
+        Store.set('activities', []);
+        const co2 = Emissions.calculate('transport', 'car-petrol', 20);
+        Store.addActivity({
+          category: 'transport',
+          type: 'car-petrol',
+          value: 20,
+          unit: 'km',
+          co2,
+        });
+
+        const today = Utils.today();
+        const total = Store.getTotalCO2(today, today);
+        assertApproxEqual(total, co2, 0.01, 'Stored CO2 should match calculated CO2');
+      });
+
+      it('should accumulate multiple activities in a day', () => {
+        Store.set('activities', []);
+        const co2a = Emissions.calcTransport('bus', 10);
+        const co2b = Emissions.calcFood('vegan', 2);
+
+        Store.addActivity({ category: 'transport', type: 'bus', value: 10, unit: 'km', co2: co2a });
+        Store.addActivity({ category: 'food', type: 'vegan', value: 2, unit: 'meals', co2: co2b });
+
+        const today = Utils.today();
+        const total = Store.getTotalCO2(today, today);
+        assertApproxEqual(total, co2a + co2b, 0.01);
+      });
+
+      it('should return category breakdown when requested', () => {
+        Store.set('activities', []);
+        Store.addActivity({ category: 'transport', type: 'car-petrol', value: 10, unit: 'km', co2: 1.92 });
+        Store.addActivity({ category: 'food', type: 'mixed', value: 1, unit: 'meals', co2: 2.5 });
+
+        const today = Utils.today();
+        const breakdown = Store.getTotalCO2(today, today, true);
+        assertTrue('transport' in breakdown, 'Breakdown should have transport');
+        assertTrue('food' in breakdown, 'Breakdown should have food');
+        assertApproxEqual(breakdown.transport, 1.92, 0.01);
+        assertApproxEqual(breakdown.food, 2.5, 0.01);
+      });
+    });
+
+    // ============================================
+    //  STORE + INSIGHTS INTEGRATION
+    // ============================================
+
+    describe('Store + Insights Integration', () => {
+      it('should generate tips based on stored profile', () => {
+        Store.set('activities', []);
+        Store.set('insightsDismissed', []);
+        Store.update('profile', {
+          completed: true,
+          householdSize: 2,
+          diet: 'high-meat',
+          commute: 'car-petrol',
+          commuteDistance: 25,
+          energySource: 'grid',
+          homeSize: 'medium',
+          country: 'us',
+        });
+
+        const tips = Insights.generateTips();
+        assertTrue(tips.length > 0, 'Should generate tips from profile');
+
+        // Should include food tips since diet is high-meat
+        const foodTip = tips.find((t) => t.category === 'food');
+        assertTrue(!!foodTip, 'Should include food-related tips for high-meat diet');
+      });
+
+      it('should reflect dismissed tips in subsequent calls', () => {
+        Store.set('insightsDismissed', []);
+        const tipsBefore = Insights.generateTips();
+        const firstTipId = tipsBefore[0].id;
+
+        Insights.dismissTip(firstTipId);
+
+        const tipsAfter = Insights.generateTips();
+        const found = tipsAfter.find((t) => t.id === firstTipId);
+        assertFalse(!!found, 'Dismissed tip should not reappear');
+      });
+
+      it('should earn achievements as activities are logged', () => {
+        Store.set('activities', []);
+        const badgesBefore = Insights.getAchievements();
+        const firstLog = badgesBefore.find((b) => b.id === 'badge-first-log');
+        assertFalse(firstLog.earned, 'Should not have First Step badge with no activities');
+
+        Store.addActivity({ category: 'food', type: 'vegan', value: 1, unit: 'meals', co2: 0.7 });
+
+        const badgesAfter = Insights.getAchievements();
+        const firstLogAfter = badgesAfter.find((b) => b.id === 'badge-first-log');
+        assertTrue(firstLogAfter.earned, 'Should earn First Step badge after logging');
+      });
+    });
+
+    // ============================================
+    //  EMISSIONS + BASELINE + INSIGHTS PIPELINE
+    // ============================================
+
+    describe('Full Pipeline — Emissions → Baseline → Insights', () => {
+      it('should use baseline when no activities are logged', () => {
+        Store.set('activities', []);
+        Store.set('insightsDismissed', []);
+        Store.update('profile', {
+          completed: true,
+          diet: 'mixed',
+          commute: 'car-petrol',
+          commuteDistance: 20,
+          energySource: 'grid',
+          homeSize: 'medium',
+          householdSize: 2,
+        });
+
+        // Tips should still generate from baseline
+        const tips = Insights.generateTips();
+        assertTrue(tips.length > 0, 'Should generate tips from baseline');
+      });
+
+      it('baseline estimation should match direct calculations', () => {
+        const profile = {
+          diet: 'vegan',
+          commute: 'bike',
+          commuteDistance: 5,
+          energySource: 'solar',
+          homeSize: 'small',
+          householdSize: 1,
+        };
+
+        const baseline = Emissions.estimateBaseline(profile);
+
+        // Transport should be 0 (bike)
+        assertEqual(baseline.transport, 0, 'Bike commute should have 0 transport');
+
+        // Food should be vegan * 3 meals * 365 days
+        const expectedFood = Emissions.calcFood('vegan', Constants.MEALS_PER_DAY) * Constants.DAYS_PER_YEAR;
+        assertApproxEqual(baseline.food, Math.round(expectedFood), 1);
+
+        // Total should be sum of all parts
+        const expectedTotal = baseline.transport + baseline.food + baseline.energy + baseline.shopping + baseline.waste;
+        assertEqual(baseline.total, Math.round(expectedTotal));
+      });
+    });
+
+    // ============================================
+    //  EDGE CASES & ERROR HANDLING
+    // ============================================
+
+    describe('Edge Cases & Error Handling', () => {
+      it('should handle NaN input to emissions calculators', () => {
+        assertEqual(Emissions.calcTransport('car-petrol', NaN), 0);
+        assertEqual(Emissions.calcFlight('short-haul', NaN), 0);
+        assertEqual(Emissions.calcFood('vegan', NaN), 0);
+        assertEqual(Emissions.calcEnergy('grid', NaN), 0);
+        assertEqual(Emissions.calcShopping('clothing', NaN), 0);
+        assertEqual(Emissions.calcWaste('landfill', NaN), 0);
+      });
+
+      it('should handle negative input to emissions calculators', () => {
+        assertEqual(Emissions.calcTransport('car-petrol', -10), 0);
+        assertEqual(Emissions.calcFood('vegan', -5), 0);
+        assertEqual(Emissions.calcEnergy('grid', -100), 0);
+      });
+
+      it('should handle undefined input to emissions calculators', () => {
+        assertEqual(Emissions.calcTransport('car-petrol', undefined), 0);
+        assertEqual(Emissions.calcFood('vegan', undefined), 0);
+      });
+
+      it('should handle string input to emissions calculators', () => {
+        assertEqual(Emissions.calcTransport('car-petrol', 'abc'), 0);
+        assertEqual(Emissions.calcFood('vegan', 'hello'), 0);
+      });
+
+      it('should handle null profile in baseline estimation', () => {
+        const baseline = Emissions.estimateBaseline(null);
+        assertEqual(baseline.total, 0, 'Null profile should return zero total');
+      });
+
+      it('should handle empty object profile', () => {
+        const baseline = Emissions.estimateBaseline({});
+        assertTrue(baseline.total > 0, 'Empty profile should use defaults');
+      });
+
+      it('should handle missing profile fields gracefully', () => {
+        const baseline = Emissions.estimateBaseline({ diet: 'vegan' });
+        assertTrue(baseline.food > 0, 'Should calculate food even with partial profile');
+      });
+    });
+
+    // ============================================
+    //  DATA INTEGRITY TESTS
+    // ============================================
+
+    describe('Data Integrity', () => {
+      it('emission factors should be immutable', () => {
+        const originalFactor = Emissions.TRANSPORT['car-petrol'];
+        try { Emissions.TRANSPORT['car-petrol'] = 999; } catch (e) { /* strict mode */ }
+        assertEqual(Emissions.TRANSPORT['car-petrol'], originalFactor, 'Transport factors should be immutable');
+      });
+
+      it('Constants should be immutable', () => {
+        const originalDays = Constants.DAYS_PER_YEAR;
+        try { Constants.DAYS_PER_YEAR = 1; } catch (e) { /* strict mode */ }
+        assertEqual(Constants.DAYS_PER_YEAR, originalDays, 'Constants should be immutable');
+      });
+
+      it('Constants LIMITS should be immutable', () => {
+        const originalMax = Constants.LIMITS.HOUSEHOLD_SIZE.max;
+        try { Constants.LIMITS.HOUSEHOLD_SIZE.max = 999; } catch (e) { /* strict mode */ }
+        assertEqual(Constants.LIMITS.HOUSEHOLD_SIZE.max, originalMax, 'Limits should be immutable');
+      });
+
+      it('Insights CHALLENGES should be immutable', () => {
+        const challengeCount = Insights.CHALLENGES.length;
+        try { Insights.CHALLENGES.push({ id: 'fake' }); } catch (e) { /* strict mode */ }
+        assertEqual(Insights.CHALLENGES.length, challengeCount, 'Challenges array should be immutable');
+      });
+
+      it('stored activities should persist to localStorage', () => {
+        Store.set('activities', []);
+        Store.addActivity({ category: 'food', type: 'vegan', value: 1, unit: 'meals', co2: 0.7 });
+
+        // Read directly from localStorage
+        const raw = JSON.parse(localStorage.getItem('ecolens_data'));
+        assertTrue(raw.activities.length > 0, 'Activities should persist to localStorage');
+      });
+    });
+
+    // ============================================
+    //  UTILS EDGE CASE TESTS
+    // ============================================
+
+    describe('Utils — Additional Edge Cases', () => {
+      it('should sanitize HTML entities', () => {
+        const result = Utils.sanitize('<script>alert("xss")</' + 'script>');
+        assertTrue(!result.includes('<script'), 'Should escape script tags');
+      });
+
+      it('should format CO2 values', () => {
+        const formatted = Utils.formatCO2(1234);
+        assertTrue(typeof formatted === 'string', 'Should return a string');
+        assertTrue(formatted.length > 0, 'Should not be empty');
+      });
+
+      it('should return today as a valid date string', () => {
+        const today = Utils.today();
+        assertTrue(/^\d{4}-\d{2}-\d{2}$/.test(today), 'Should be YYYY-MM-DD format');
+      });
+
+      it('should generate valid week range', () => {
+        const range = Utils.currentWeekRange();
+        assertTrue('start' in range, 'Should have start');
+        assertTrue('end' in range, 'Should have end');
+        assertTrue(range.start <= range.end, 'Start should be <= end');
+      });
+
+      it('should generate valid month range', () => {
+        const range = Utils.currentMonthRange();
+        assertTrue('start' in range, 'Should have start');
+        assertTrue('end' in range, 'Should have end');
+        assertTrue(range.start <= range.end, 'Start should be <= end');
+      });
+
+      it('daysAgo should return past dates', () => {
+        const today = Utils.today();
+        const yesterday = Utils.daysAgo(1);
+        assertTrue(yesterday < today, 'daysAgo(1) should be before today');
+      });
+    });
+
+    // Run all tests
+    run();
+  </script>
+</body>
+</html>

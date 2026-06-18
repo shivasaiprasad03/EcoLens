@@ -9,17 +9,18 @@ const App = (() => {
 
   /**
    * Initializes the EcoLens application.
+   * Sets up preferences, renders the app shell, and boots the router.
    */
   function init() {
-    console.log('[EcoLens] Initializing...');
+    console.log(`[${Constants.APP_NAME}] v${Constants.APP_VERSION} — Initializing...`);
 
-    // Apply saved preferences
+    // Apply saved preferences before first paint
     applyPreferences();
 
     // Set up the app shell
     const shell = document.getElementById('app');
     if (!shell) {
-      console.error('[EcoLens] #app element not found');
+      console.error(`[${Constants.APP_NAME}] #app element not found`);
       return;
     }
 
@@ -35,37 +36,38 @@ const App = (() => {
     main.setAttribute('role', 'main');
     shell.appendChild(main);
 
-    // Register routes
-    Router.register('/', OnboardingView);
-    Router.register('/dashboard', DashboardView);
-    Router.register('/log', LoggerView);
-    Router.register('/insights', InsightsView);
-    Router.register('/challenges', ChallengesView);
-    Router.register('/settings', SettingsView);
+    // Register routes — order matches navbar link order
+    Router.register(Constants.ROUTES.HOME, OnboardingView);
+    Router.register(Constants.ROUTES.DASHBOARD, DashboardView);
+    Router.register(Constants.ROUTES.LOG, LoggerView);
+    Router.register(Constants.ROUTES.INSIGHTS, InsightsView);
+    Router.register(Constants.ROUTES.CHALLENGES, ChallengesView);
+    Router.register(Constants.ROUTES.SETTINGS, SettingsView);
 
-    // Initialize router
+    // Initialize router (triggers first route render)
     Router.init(main);
 
-    console.log('[EcoLens] Ready ✓');
+    console.log(`[${Constants.APP_NAME}] Ready ✓`);
   }
 
   /**
    * Applies saved user preferences (theme, font size, reduced motion).
+   * Called once during init, before any views render.
    */
   function applyPreferences() {
     const prefs = Store.get('preferences');
 
-    // Theme
-    if (prefs.theme && prefs.theme !== 'auto') {
+    // Theme — only override if user has explicitly chosen (not 'auto')
+    if (prefs.theme && prefs.theme !== Constants.THEMES.AUTO) {
       document.documentElement.setAttribute('data-theme', prefs.theme);
     }
 
-    // Font size
-    if (prefs.fontSize === 'large') {
-      document.documentElement.style.fontSize = '18px';
+    // Font size — scale up root font size for accessibility
+    if (prefs.fontSize === Constants.FONT_SIZES.LARGE) {
+      document.documentElement.style.fontSize = Constants.LARGE_FONT_SIZE_PX;
     }
 
-    // Reduced motion
+    // Reduced motion — disable all CSS transition durations
     if (prefs.reducedMotion) {
       document.documentElement.style.setProperty('--duration-fast', '0ms');
       document.documentElement.style.setProperty('--duration-normal', '0ms');

@@ -261,7 +261,7 @@ const DashboardView = (() => {
 
     if (category === 'transport') {
       const profile = Store.get('profile');
-      value = profile.commuteDistance > 0 ? profile.commuteDistance * 2 : 10;
+      value = profile.commuteDistance > 0 ? profile.commuteDistance * 2 : Constants.DEFAULT_QUICK_LOG_DISTANCE_KM;
       unit = 'km';
     }
 
@@ -278,9 +278,9 @@ const DashboardView = (() => {
 
     Toast.success('Activity logged!', `${meta.icon} ${Utils.formatCO2(co2)} CO₂e added`);
 
-    // Add micro-animation to the button
+    // Micro-animation feedback on the button
     btn.style.transform = 'scale(0.95)';
-    setTimeout(() => (btn.style.transform = ''), 150);
+    setTimeout(() => (btn.style.transform = ''), Constants.BUTTON_FEEDBACK_MS);
   }
 
   /**

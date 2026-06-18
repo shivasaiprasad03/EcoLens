@@ -1,7 +1,24 @@
 /**
  * EcoLens — Insights & Recommendation Engine
  * Rule-based engine that analyzes user emissions and generates personalized tips.
+ *
+ * Architecture:
+ *  1. Filter: Remove tips whose conditions don’t match the user profile.
+ *  2. Score:  Weight by potential savings and boost the user’s top category.
+ *  3. Rank:   Sort descending by score; return top-N.
+ *
  * @module insights
+ */
+
+/**
+ * @typedef {Object} ScoredTip
+ * @property {string} id          - Unique tip identifier.
+ * @property {string} category    - Emission category this tip targets.
+ * @property {string} title       - Short headline.
+ * @property {string} description - Actionable advice.
+ * @property {number} savingsKg   - Estimated annual CO₂ savings in kg.
+ * @property {string} difficulty  - 'easy' | 'medium' | 'hard'.
+ * @property {number} score       - Computed relevance score for ranking.
  */
 
 const Insights = (() => {
@@ -252,10 +269,10 @@ const Insights = (() => {
    *  2. Exclude dismissed tips
    *  3. Sorted by potential savings (highest first)
    *  4. Prioritized by the user's top emission category
-   * @param {number} maxTips - Maximum number of tips to return.
-   * @returns {Array<Object>} Sorted array of applicable tips.
+   * @param {number} [maxTips=Constants.MAX_TIPS_DISPLAY] - Maximum tips to return.
+   * @returns {Array<ScoredTip>} Sorted array of applicable tips.
    */
-  function generateTips(maxTips = 10) {
+  function generateTips(maxTips = Constants.MAX_TIPS_DISPLAY) {
     const profile = Store.get('profile');
     const dismissed = Store.get('insightsDismissed') || [];
 
@@ -269,11 +286,11 @@ const Insights = (() => {
     if (Object.keys(breakdown).length === 0 && profile.completed) {
       const baseline = Emissions.estimateBaseline(profile);
       emissionBreakdown = {
-        transport: baseline.transport / 12, // monthly equivalent
-        food: baseline.food / 12,
-        energy: baseline.energy / 12,
-        shopping: baseline.shopping / 12,
-        waste: baseline.waste / 12,
+        transport: baseline.transport / Constants.MONTHS_PER_YEAR,
+        food: baseline.food / Constants.MONTHS_PER_YEAR,
+        energy: baseline.energy / Constants.MONTHS_PER_YEAR,
+        shopping: baseline.shopping / Constants.MONTHS_PER_YEAR,
+        waste: baseline.waste / Constants.MONTHS_PER_YEAR,
       };
     }
 
@@ -524,19 +541,19 @@ const Insights = (() => {
           earned = activities.length > 0;
           break;
         case 'badge-week-streak':
-          earned = challenges.streak >= 7;
+          earned = challenges.streak >= Constants.BADGE_THRESHOLDS.WEEK_STREAK;
           break;
         case 'badge-month-streak':
-          earned = challenges.streak >= 30;
+          earned = challenges.streak >= Constants.BADGE_THRESHOLDS.MONTH_STREAK;
           break;
         case 'badge-first-challenge':
           earned = (challenges.completed || []).length > 0;
           break;
         case 'badge-green-commuter':
-          earned = activities.filter((a) => a.category === 'transport' && ['bike', 'walk'].includes(a.type)).length >= 10;
+          earned = activities.filter((a) => a.category === 'transport' && ['bike', 'walk'].includes(a.type)).length >= Constants.BADGE_THRESHOLDS.GREEN_COMMUTES;
           break;
         case 'badge-plant-powered':
-          earned = activities.filter((a) => a.category === 'food' && a.type === 'vegan').length >= 20;
+          earned = activities.filter((a) => a.category === 'food' && a.type === 'vegan').length >= Constants.BADGE_THRESHOLDS.VEGAN_MEALS;
           break;
         default:
           earned = false;

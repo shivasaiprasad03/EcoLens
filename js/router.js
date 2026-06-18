@@ -86,10 +86,10 @@ const Router = (() => {
     // Determine which view to mount
     let viewPath = path;
     if (!routes.has(viewPath)) {
-      // Fallback to default route
+      // Fallback: onboarding for new users, dashboard for returning users
       const profile = Store.get('profile');
-      viewPath = profile && profile.completed ? '/dashboard' : '/';
-      // Update hash silently
+      viewPath = profile && profile.completed ? Constants.ROUTES.DASHBOARD : Constants.ROUTES.HOME;
+      // Update hash silently (no extra hashchange event)
       if (path !== viewPath) {
         history.replaceState(null, '', '#' + viewPath);
       }

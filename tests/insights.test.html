@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoLens — Insights Engine Tests</title>
+</head>
+<body>
+  <div id="test-results"></div>
+
+  <!-- Dependencies (in correct load order) -->
+  <script src="../js/constants.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/state.js"></script>
+  <script src="../js/emissions.js"></script>
+  <script src="../js/insights.js"></script>
+
+  <!-- Test Framework -->
+  <script src="test-runner.js"></script>
+
+  <script>
+    const { describe, it, assertEqual, assertDeepEqual, assertTrue, assertFalse, assertThrows, assertInRange, assertApproxEqual, run } = TestRunner;
+
+    // Clear any existing state before tests
+    localStorage.removeItem('ecolens_data');
+
+    // ============================================
+    //  TIP GENERATION TESTS
+    // ============================================
+
+    describe('Tip Generation — Filtering', () => {
+      it('should return tips when profile is complete', () => {
+        Store.update('profile', {
+          completed: true,
+          householdSize: 2,
+          diet: 'mixed',
+          commute: 'car-petrol',
+          commuteDistance: 15,
+          energySource: 'grid',
+          homeSize: 'medium',
+          country: 'us',
+        });
+        const tips = Insights.generateTips();
+        assertTrue(tips.length > 0, 'Should return at least one tip');
+      });
+
+      it('should filter tips by profile conditions', () => {
+        Store.update('profile', { commute: 'bike', commuteDistance: 5, diet: 'vegan' });
+        const tips = Insights.generateTips();
+        // Should NOT include "switch to EV" (commute is bike)
+        const evTip = tips.find((t) => t.id === 'tip-switch-to-ev');
+        assertFalse(!!evTip, 'Should not suggest EV switch to cyclists');
+      });
+
+      it('should not include "go vegetarian" for non-high-meat users', () => {
+        Store.update('profile', { diet: 'vegetarian' });
+        const tips = Insights.generateTips();
+        const vegTip = tips.find((t) => t.id === 'tip-go-vegetarian');
+        assertFalse(!!vegTip, 'Should not suggest vegetarian to vegetarians');
+      });
+
+      it('should include transport tips for car commuters', () => {
+        Store.update('profile', { commute: 'car-petrol', commuteDistance: 20 });
+        const tips = Insights.generateTips();
+        const transportTips = tips.filter((t) => t.category === 'transport');
+        assertTrue(transportTips.length > 0, 'Should have transport tips for car users');
+      });
+
+      it('should include energy tips for grid users', () => {
+        Store.update('profile', { energySource: 'grid' });
+        const tips = Insights.generateTips();
+        const renewableTip = tips.find((t) => t.id === 'tip-switch-renewable');
+        assertTrue(!!renewableTip, 'Should suggest switching to renewables for grid users');
+      });
+
+      it('should not suggest solar to solar users', () => {
+        Store.update('profile', { energySource: 'solar' });
+        const tips = Insights.generateTips();
+        const solarTip = tips.find((t) => t.id === 'tip-solar-panels');
+        assertFalse(!!solarTip, 'Should not suggest solar to solar users');
+      });
+
+      it('should respect maxTips limit', () => {
+        Store.update('profile', { commute: 'car-petrol', commuteDistance: 15, diet: 'mixed', energySource: 'grid' });
+        const tips = Insights.generateTips(3);
+        assertTrue(tips.length <= 3, 'Should return at most 3 tips');
+      });
+
+      it('should return zero tips when maxTips is 0', () => {
+        const tips = Insights.generateTips(0);
+        assertEqual(tips.length, 0);
+      });
+    });
+
+    // ============================================
+    //  TIP SCORING & RANKING TESTS
+    // ============================================
+
+    describe('Tip Scoring & Ranking', () => {
+      it('should assign a score to each tip', () => {
+        Store.update('profile', { commute: 'car-petrol', commuteDistance: 20, diet: 'high-meat', energySource: 'grid' });
+        const tips = Insights.generateTips();
+        tips.forEach((tip) => {
+          assertTrue(typeof tip.score === 'number', 'Each tip should have a numeric score');
+          assertTrue(tip.score > 0, 'Score should be positive');
+        });
+      });
+
+      it('should sort tips by score descending', () => {
+        const tips = Insights.generateTips();
+        for (let i = 1; i < tips.length; i++) {
+          assertTrue(tips[i - 1].score >= tips[i].score, 'Tips should be sorted by score descending');
+        }
+      });
+
+      it('should boost tips in highest-emission category', () => {
+        // Log many transport activities to make transport the top category
+        Store.set('activities', []);
+        for (let i = 0; i < 5; i++) {
+          Store.addActivity({ category: 'transport', type: 'car-petrol', value: 50, unit: 'km', co2: 9.6 });
+        }
+        Store.update('profile', { commute: 'car-petrol', commuteDistance: 20, diet: 'mixed', energySource: 'grid' });
+        const tips = Insights.generateTips();
+        // The top tip should be in transport category (boosted)
+        if (tips.length > 0) {
+          assertTrue(tips[0].category === 'transport' || tips[0].savingsKg > 1500,
+            'Top tip should be transport-related or very high savings');
+        }
+      });
+    });
+
+    // ============================================
+    //  TIP DISMISSAL TESTS
+    // ============================================
+
+    describe('Tip Dismissal', () => {
+      it('should exclude dismissed tips', () => {
+        Store.set('insightsDismissed', []);
+        Store.update('profile', { diet: 'mixed' });
+        const tipsBefore = Insights.generateTips();
+        const targetId = tipsBefore[0].id;
+
+        Insights.dismissTip(targetId);
+
+        const tipsAfter = Insights.generateTips();
+        const found = tipsAfter.find((t) => t.id === targetId);
+        assertFalse(!!found, 'Dismissed tip should not appear');
+      });
+
+      it('should not duplicate dismissed tip IDs', () => {
+        Store.set('insightsDismissed', []);
+        Insights.dismissTip('tip-meatless-days');
+        Insights.dismissTip('tip-meatless-days');
+        const dismissed = Store.get('insightsDismissed');
+        assertEqual(dismissed.length, 1, 'Should not duplicate dismissed IDs');
+      });
+
+      it('should handle dismissing non-existent tip IDs gracefully', () => {
+        Store.set('insightsDismissed', []);
+        Insights.dismissTip('tip-nonexistent-abc');
+        const dismissed = Store.get('insightsDismissed');
+        assertTrue(dismissed.includes('tip-nonexistent-abc'), 'Should store any dismissed ID');
+      });
+    });
+
+    // ============================================
+    //  POTENTIAL SAVINGS CALCULATOR TESTS
+    // ============================================
+
+    describe('Potential Savings Calculator', () => {
+      it('should sum savings correctly', () => {
+        const tips = [
+          { savingsKg: 100 },
+          { savingsKg: 200 },
+          { savingsKg: 300 },
+        ];
+        assertEqual(Insights.totalPotentialSavings(tips), 600);
+      });
+
+      it('should return 0 for empty array', () => {
+        assertEqual(Insights.totalPotentialSavings([]), 0);
+      });
+
+      it('should handle single tip', () => {
+        assertEqual(Insights.totalPotentialSavings([{ savingsKg: 500 }]), 500);
+      });
+    });
+
+    // ============================================
+    //  TREND INSIGHT TESTS
+    // ============================================
+
+    describe('Trend Insight', () => {
+      it('should return an object with message, type, and emoji', () => {
+        Store.set('activities', []);
+        const insight = Insights.getTrendInsight();
+        assertTrue(typeof insight.message === 'string', 'Should have a message');
+        assertTrue(typeof insight.type === 'string', 'Should have a type');
+        assertTrue(typeof insight.emoji === 'string', 'Should have an emoji');
+      });
+
+      it('should return info type when no data exists', () => {
+        Store.set('activities', []);
+        const insight = Insights.getTrendInsight();
+        assertEqual(insight.type, 'info');
+      });
+
+      it('should have a non-empty message', () => {
+        const insight = Insights.getTrendInsight();
+        assertTrue(insight.message.length > 0, 'Message should not be empty');
+      });
+    });
+
+    // ============================================
+    //  CHALLENGES TESTS
+    // ============================================
+
+    describe('Challenges', () => {
+      it('should return all challenges', () => {
+        const challenges = Insights.getChallenges();
+        assertTrue(challenges.length >= 8, 'Should have at least 8 challenges');
+      });
+
+      it('should include required fields in each challenge', () => {
+        const challenges = Insights.getChallenges();
+        challenges.forEach((c) => {
+          assertTrue('id' in c, 'Challenge should have id');
+          assertTrue('title' in c, 'Challenge should have title');
+          assertTrue('description' in c, 'Challenge should have description');
+          assertTrue('emoji' in c, 'Challenge should have emoji');
+          assertTrue('durationDays' in c, 'Challenge should have durationDays');
+          assertTrue('category' in c, 'Challenge should have category');
+          assertTrue('isCompleted' in c, 'Challenge should have isCompleted');
+          assertTrue('isActive' in c, 'Challenge should have isActive');
+        });
+      });
+
+      it('should mark active challenge correctly', () => {
+        Store.update('challenges', { active: 'challenge-meatless-monday', completed: [], streak: 0 });
+        const challenges = Insights.getChallenges();
+        const active = challenges.find((c) => c.isActive);
+        assertTrue(!!active, 'Should have one active challenge');
+        assertEqual(active.id, 'challenge-meatless-monday');
+      });
+
+      it('should return null when no active challenge', () => {
+        Store.update('challenges', { active: null });
+        const active = Insights.getActiveChallenge();
+        assertEqual(active, null);
+      });
+
+      it('should return active challenge details', () => {
+        Store.update('challenges', { active: 'challenge-bike-week' });
+        const active = Insights.getActiveChallenge();
+        assertTrue(active !== null, 'Should return challenge details');
+        assertEqual(active.id, 'challenge-bike-week');
+      });
+    });
+
+    // ============================================
+    //  ACHIEVEMENTS TESTS
+    // ============================================
+
+    describe('Achievements', () => {
+      it('should return all achievements', () => {
+        const badges = Insights.getAchievements();
+        assertTrue(badges.length >= 8, 'Should have at least 8 badges');
+      });
+
+      it('should include earned status in each badge', () => {
+        const badges = Insights.getAchievements();
+        badges.forEach((b) => {
+          assertTrue('earned' in b, 'Badge should have earned field');
+          assertTrue(typeof b.earned === 'boolean', 'earned should be boolean');
+        });
+      });
+
+      it('should earn "First Step" badge after logging an activity', () => {
+        Store.set('activities', []);
+        Store.addActivity({ category: 'food', type: 'vegan', value: 1, unit: 'meals', co2: 0.7 });
+        const badges = Insights.getAchievements();
+        const firstStep = badges.find((b) => b.id === 'badge-first-log');
+        assertTrue(firstStep.earned, 'First Step badge should be earned');
+      });
+
+      it('should not earn "7-Day Streak" with streak < 7', () => {
+        Store.update('challenges', { streak: 3 });
+        const badges = Insights.getAchievements();
+        const weekStreak = badges.find((b) => b.id === 'badge-week-streak');
+        assertFalse(weekStreak.earned, 'Week streak badge should not be earned');
+      });
+
+      it('should earn "7-Day Streak" with streak >= 7', () => {
+        Store.update('challenges', { streak: 7 });
+        const badges = Insights.getAchievements();
+        const weekStreak = badges.find((b) => b.id === 'badge-week-streak');
+        assertTrue(weekStreak.earned, 'Week streak badge should be earned');
+      });
+
+      it('should earn "Challenger" after completing a challenge', () => {
+        Store.update('challenges', { completed: [{ id: 'challenge-bike-week', completedDate: Utils.today() }] });
+        const badges = Insights.getAchievements();
+        const challenger = badges.find((b) => b.id === 'badge-first-challenge');
+        assertTrue(challenger.earned, 'Challenger badge should be earned');
+      });
+    });
+
+    // ============================================
+    //  CONSTANTS INTEGRATION TESTS
+    // ============================================
+
+    describe('Constants Integration', () => {
+      it('should use Constants.MAX_TIPS_DISPLAY as default', () => {
+        Store.update('profile', { commute: 'car-petrol', commuteDistance: 20, diet: 'mixed', energySource: 'grid' });
+        Store.set('insightsDismissed', []);
+        const tips = Insights.generateTips();
+        assertTrue(tips.length <= Constants.MAX_TIPS_DISPLAY, 'Default tips should respect MAX_TIPS_DISPLAY');
+      });
+
+      it('should use Constants.BADGE_THRESHOLDS for achievements', () => {
+        Store.update('challenges', { streak: Constants.BADGE_THRESHOLDS.MONTH_STREAK });
+        const badges = Insights.getAchievements();
+        const monthStreak = badges.find((b) => b.id === 'badge-month-streak');
+        assertTrue(monthStreak.earned, 'Month streak should be earned at threshold');
+      });
+
+      it('should have all CATEGORIES defined', () => {
+        assertTrue(Constants.CATEGORIES.length >= 6, 'Should have at least 6 categories');
+        assertTrue(Constants.CATEGORIES.includes('transport'), 'Should include transport');
+        assertTrue(Constants.CATEGORIES.includes('food'), 'Should include food');
+        assertTrue(Constants.CATEGORIES.includes('energy'), 'Should include energy');
+      });
+
+      it('should have all ROUTES defined', () => {
+        assertTrue(typeof Constants.ROUTES.HOME === 'string');
+        assertTrue(typeof Constants.ROUTES.DASHBOARD === 'string');
+        assertTrue(typeof Constants.ROUTES.LOG === 'string');
+        assertTrue(typeof Constants.ROUTES.INSIGHTS === 'string');
+        assertTrue(typeof Constants.ROUTES.CHALLENGES === 'string');
+        assertTrue(typeof Constants.ROUTES.SETTINGS === 'string');
+      });
+
+      it('should have immutable Constants', () => {
+        // Attempting to modify a frozen constant should silently fail
+        try { Constants.DAYS_PER_YEAR = 999; } catch (e) { /* strict mode may throw */ }
+        assertEqual(Constants.DAYS_PER_YEAR, 365, 'Constants should be immutable');
+      });
+    });
+
+    // Run all tests
+    run();
+  </script>
+</body>
+</html>
