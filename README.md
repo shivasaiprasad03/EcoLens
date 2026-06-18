@@ -15,7 +15,7 @@ LIVE SITE - https://ecolens-20260615.web.app/
 
 ---
 
-## 🎯 Problem Statement Alignment
+## 🎯 Problem Statement 
 
 The average person generates 4.7 tonnes of CO₂e per year globally, but most people don't know:
 - **Where** their emissions come from
@@ -271,19 +271,6 @@ php -S localhost:8000
 6. **The "AI assistant"** is a deterministic, rule-based recommendation engine — not an LLM. This is intentional: it's more predictable, testable, works offline, and requires no API keys.
 
 7. **Browser support**: Modern browsers (Chrome 90+, Firefox 88+, Safari 14+, Edge 90+). Older browsers may not support some CSS features (backdrop-filter, CSS custom properties).
-
----
-
-## 📊 Evaluation Alignment
-
-| Criteria | Impact | Implementation |
-|----------|--------|----------------|
-| **Code Quality** | 🔴 High | Modular IIFE pattern, JSDoc comments, consistent naming, DRY principles, Object.freeze() for immutability |
-| **Problem Alignment** | 🔴 High | Directly addresses understanding (baseline), tracking (logger), and reducing (insights) carbon footprint |
-| **Security** | 🟡 Medium | XSS prevention, CSP headers, input validation, no network requests, Object.freeze() |
-| **Efficiency** | 🟡 Medium | Zero dependencies, Canvas charts (no heavy libs), debounced persistence, lazy view loading |
-| **Testing** | 🟡 Medium | 70+ browser-based tests covering all core logic, edge cases, and security |
-| **Accessibility** | 🟡 Medium | WCAG 2.1 AA target, ARIA, keyboard nav, screen reader support, reduced motion |
 
 ---
 
