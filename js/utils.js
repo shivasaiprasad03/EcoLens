@@ -1,6 +1,12 @@
 /**
  * EcoLens — Utility Functions
  * Shared helpers for sanitization, dates, formatting, and accessibility.
+ *
+ * Security:
+ *  - All user-facing strings pass through escapeHtml() before DOM insertion.
+ *  - deepClone() guards against prototype pollution in JSON payloads.
+ *  - Input validation functions enforce type, range, and format checks.
+ *
  * @module utils
  */
 
@@ -34,13 +40,17 @@ const Utils = (() => {
   /**
    * Sanitizes a value for safe DOM insertion.
    * Handles strings, numbers, booleans, null, undefined.
+   * Truncates excessively long strings to prevent DoS via DOM bloat.
    * @param {*} value
    * @returns {string}
    */
   function sanitize(value) {
     if (value == null) return '';
     if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-    return escapeHtml(String(value));
+    const str = String(value);
+    // Guard: truncate excessively long input to prevent DoS
+    const truncated = str.length > 10000 ? str.slice(0, 10000) : str;
+    return escapeHtml(truncated);
   }
 
   // ---- Input Validation ----
@@ -347,12 +357,19 @@ const Utils = (() => {
 
   /**
    * Deep clones a JSON-serializable object.
+   * Includes a prototype pollution guard — rejects objects containing __proto__.
    * @param {*} obj
    * @returns {*}
    */
   function deepClone(obj) {
     if (obj === null || typeof obj !== 'object') return obj;
-    return JSON.parse(JSON.stringify(obj));
+    const json = JSON.stringify(obj);
+    // Security: reject payloads containing prototype pollution vectors
+    if (json.includes('"__proto__"')) {
+      console.warn('[Utils] deepClone blocked: __proto__ key detected');
+      return Array.isArray(obj) ? [] : {};
+    }
+    return JSON.parse(json);
   }
 
   // ---- DOM Helpers ----

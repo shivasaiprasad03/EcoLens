@@ -311,19 +311,55 @@ const Store = (() => {
   }
 
   /**
-   * Imports state from a JSON string, with validation.
-   * @param {string} jsonStr
+   * Imports state from a JSON string, with strict validation.
+   * Security measures:
+   *  - Input size limit (prevents DoS via huge payloads)
+   *  - Prototype pollution guard (__proto__, constructor, prototype keys rejected)
+   *  - Schema validation (expected keys, types, and structure)
+   *  - Version field required (prevents importing arbitrary JSON)
+   *
+   * @param {string} jsonStr - JSON string from a trusted file input.
    * @returns {{success: boolean, error?: string}}
    */
   function importData(jsonStr) {
     try {
+      // Guard: input type and size
+      if (typeof jsonStr !== 'string') {
+        return { success: false, error: 'Invalid input type' };
+      }
+      if (jsonStr.length > Constants.MAX_IMPORT_FILE_SIZE) {
+        return { success: false, error: 'File exceeds maximum allowed size' };
+      }
+
       const data = JSON.parse(jsonStr);
-      if (!data || typeof data !== 'object') {
-        return { success: false, error: 'Invalid data format' };
+
+      // Guard: must be a plain object
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return { success: false, error: 'Invalid data format — expected a JSON object' };
       }
-      if (!data._version) {
-        return { success: false, error: 'Missing version field — not an EcoLens export' };
+
+      // Guard: prototype pollution prevention
+      const dangerousKeys = ['__proto__', 'constructor', 'prototype'];
+      const allKeys = JSON.stringify(data);
+      for (const key of dangerousKeys) {
+        if (allKeys.includes('"' + key + '"')) {
+          return { success: false, error: 'Rejected: contains disallowed key "' + key + '"' };
+        }
       }
+
+      // Guard: version field is required and must be a number
+      if (!data._version || typeof data._version !== 'number') {
+        return { success: false, error: 'Missing or invalid version field — not an EcoLens export' };
+      }
+
+      // Guard: validate expected structure
+      if (data.activities && !Array.isArray(data.activities)) {
+        return { success: false, error: 'Invalid data: activities must be an array' };
+      }
+      if (data.profile && typeof data.profile !== 'object') {
+        return { success: false, error: 'Invalid data: profile must be an object' };
+      }
+
       state = mergeDefaults(data);
       state._version = SCHEMA_VERSION;
       persistState();
@@ -334,7 +370,7 @@ const Store = (() => {
       }
       return { success: true };
     } catch (err) {
-      return { success: false, error: 'Failed to parse JSON: ' + err.message };
+      return { success: false, error: 'Failed to parse JSON' };
     }
   }
 

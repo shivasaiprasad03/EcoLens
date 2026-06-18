@@ -1,6 +1,12 @@
 /**
  * EcoLens — Hash-based SPA Router
- * Manages view lifecycle and navigation.
+ * Manages view lifecycle (mount/unmount) and client-side navigation.
+ *
+ * Security:
+ *  - Hash paths are sanitized to reject unexpected characters.
+ *  - Unrecognized routes fall back to safe defaults (never render arbitrary views).
+ *  - Error boundaries catch and display safe fallback UI on mount failures.
+ *
  * @module router
  */
 
@@ -34,7 +40,7 @@ const Router = (() => {
    */
   function register(path, viewModule) {
     if (!viewModule || typeof viewModule.mount !== 'function') {
-      console.error(`[Router] Invalid view module for path "${path}"`);
+      console.error('[Router] Invalid view module for path:', String(path).slice(0, 50));
       return;
     }
     routes.set(path, viewModule);
@@ -49,12 +55,15 @@ const Router = (() => {
   }
 
   /**
-   * Gets the current route path from the hash.
-   * @returns {string}
+   * Gets the current route path from the URL hash.
+   * Sanitizes the hash to only allow safe characters (alphanumeric, slash, hyphen).
+   * @returns {string} Sanitized route path.
    */
   function getCurrentPath() {
-    const hash = window.location.hash.slice(1) || '/';
-    return hash;
+    const rawHash = window.location.hash.slice(1) || '/';
+    // Security: strip any characters that aren't part of a valid route path
+    const sanitized = rawHash.replace(/[^a-zA-Z0-9/\-]/g, '');
+    return sanitized || '/';
   }
 
   /**
@@ -73,7 +82,7 @@ const Router = (() => {
         try {
           oldView.unmount();
         } catch (err) {
-          console.error(`[Router] Error unmounting "${currentRoute}":`, err);
+          console.error('[Router] Error unmounting:', String(currentRoute).slice(0, 50), err);
         }
       }
     }
@@ -102,7 +111,7 @@ const Router = (() => {
       try {
         view.mount(mountPoint);
       } catch (err) {
-        console.error(`[Router] Error mounting "${viewPath}":`, err);
+        console.error('[Router] Error mounting:', String(viewPath).slice(0, 50), err);
         mountPoint.innerHTML = `
           <div class="container" style="padding-top: var(--space-16); text-align: center;">
             <p class="text-xl font-semibold">Something went wrong</p>

@@ -7,6 +7,12 @@
 const SettingsView = (() => {
   'use strict';
 
+  /** @type {Set<string>} Allowed theme values (whitelist for input validation) */
+  const ALLOWED_THEMES = new Set([Constants.THEMES.AUTO, Constants.THEMES.LIGHT, Constants.THEMES.DARK]);
+
+  /** @type {Set<string>} Allowed font size values (whitelist for input validation) */
+  const ALLOWED_FONT_SIZES = new Set([Constants.FONT_SIZES.NORMAL, Constants.FONT_SIZES.LARGE]);
+
   /**
    * Mounts the settings view.
    * @param {HTMLElement} container
@@ -201,11 +207,15 @@ const SettingsView = (() => {
       Router.navigate('/');
     });
 
-    // Theme select
+    // Theme select — with whitelist validation
     document.getElementById('theme-select')?.addEventListener('change', (e) => {
       const theme = e.target.value;
+      if (!ALLOWED_THEMES.has(theme)) {
+        Toast.error('Invalid theme', 'Unrecognized theme value');
+        return;
+      }
       Store.update('preferences', { theme });
-      if (theme === 'auto') {
+      if (theme === Constants.THEMES.AUTO) {
         document.documentElement.removeAttribute('data-theme');
       } else {
         document.documentElement.setAttribute('data-theme', theme);
@@ -229,10 +239,15 @@ const SettingsView = (() => {
       Toast.info('Reduced motion ' + (e.target.checked ? 'enabled' : 'disabled'));
     });
 
-    // Font size select
+    // Font size select — with whitelist validation
     document.getElementById('font-size-select')?.addEventListener('change', (e) => {
-      Store.update('preferences', { fontSize: e.target.value });
-      document.documentElement.style.fontSize = e.target.value === 'large' ? '18px' : '16px';
+      const fontSize = e.target.value;
+      if (!ALLOWED_FONT_SIZES.has(fontSize)) {
+        Toast.error('Invalid font size', 'Unrecognized font size value');
+        return;
+      }
+      Store.update('preferences', { fontSize });
+      document.documentElement.style.fontSize = fontSize === Constants.FONT_SIZES.LARGE ? Constants.LARGE_FONT_SIZE_PX : '16px';
       Toast.info('Font size updated');
     });
 
@@ -261,8 +276,8 @@ const SettingsView = (() => {
       const file = e.target.files[0];
       if (!file) return;
 
-      if (file.size > 5 * 1024 * 1024) {
-        Toast.error('File too large', 'Maximum file size is 5 MB');
+      if (file.size > Constants.MAX_IMPORT_FILE_SIZE) {
+        Toast.error('File too large', `Maximum file size is ${Math.round(Constants.MAX_IMPORT_FILE_SIZE / 1024 / 1024)} MB`);
         return;
       }
 
